@@ -199,7 +199,7 @@ CREATE TABLE feed_writeoff
 (
     writeoff_id  integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     number       varchar(32)    NOT NULL UNIQUE CHECK (number ~ '^[A-Z]{1,2}-[0-9]{2}$'),
-    created_at   timestamptz    NOT NULL DEFAULT now(),
+    created_at   date           NOT NULL DEFAULT current_date,
     batch_id     integer        NOT NULL REFERENCES feed_batch (batch_id) ON DELETE RESTRICT ON UPDATE CASCADE,
     enclosure_id integer        NOT NULL REFERENCES enclosure (enclosure_id) ON DELETE RESTRICT ON UPDATE CASCADE,
     employee_id  integer        NOT NULL REFERENCES employee (employee_id) ON DELETE RESTRICT ON UPDATE CASCADE,

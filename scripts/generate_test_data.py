@@ -313,7 +313,7 @@ with psycopg.connect(DSN) as conn:
         if quantity > 0:
             batch['remaining'] -= quantity
             created = rand_date(batch['received_date'], min(batch['expiry_date'], TODAY))
-            writeoffs.append((batch, quantity, datetime.combine(created, time(9), TZ)))
+            writeoffs.append((batch, quantity, created))
     for batch in batches:
         if batch['remaining'] == 0:
             status = 'израсходована'
