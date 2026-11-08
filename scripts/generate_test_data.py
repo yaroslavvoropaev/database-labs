@@ -28,6 +28,7 @@ FLIGHTS = 80
 FEED_BATCHES = 40
 WRITEOFFS = 800
 CONTRACTS = 80
+DEATHS = 15
 
 random.seed(42)  # одинаковые данные при каждом запуске
 
@@ -196,14 +197,23 @@ with psycopg.connect(DSN) as conn:
         insert('feed_writeoff', number=next(codes), created_at=created, batch_id=batch['id'],
                enclosure_id=random.choice(enclosures)[0], employee_id=random.choice(employees), quantity=quantity)
 
-    # Передача птиц покупателям
-    for b in random.sample(birds, CONTRACTS):
+    # Передача птиц покупателям; по исполненному договору птица выбывает с фермы
+    sold = random.sample(birds, CONTRACTS)
+    for b in sold:
         start = rand_date(b['birth'] + days(60), TODAY)
         status = random.choice(['действует', 'исполнен', 'расторгнут'])
+        end = None if status == 'действует' else min(start + days(14), TODAY)
         insert('transfer_contract', bird_id=b['id'], buyer_id=random.randint(1, BUYERS),
                employee_id=random.choice(employees), type=random.choice(['продажа', 'безвозмездная передача']),
-               start_date=start, end_date=None if status == 'действует' else min(start + days(14), TODAY),
+               start_date=start, end_date=end,
                conditions=f'Цена {random.randrange(3000, 30000, 500)} руб.', status=status)
+        if status == 'исполнен':
+            cur.execute("UPDATE bird SET status = 'передана', left_date = %s WHERE bird_id = %s", (end, b['id']))
+
+    # Падёж среди непроданных птиц
+    for b in random.sample([b for b in birds if b not in sold], DEATHS):
+        cur.execute("UPDATE bird SET status = 'пала', left_date = %s WHERE bird_id = %s",
+                    (rand_date(b['birth'] + days(30), TODAY), b['id']))
 
     for table in ['bird', 'breeding_pair', 'egg', 'movement', 'vet_examination', 'flight_participation',
                   'feed_writeoff', 'transfer_contract']:

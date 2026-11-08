@@ -77,7 +77,12 @@ CREATE TABLE bird
     breed_id    integer     NOT NULL REFERENCES breed (breed_id) ON DELETE RESTRICT ON UPDATE CASCADE,
     father_id   integer REFERENCES bird (bird_id) ON DELETE RESTRICT ON UPDATE CASCADE,
     mother_id   integer REFERENCES bird (bird_id) ON DELETE RESTRICT ON UPDATE CASCADE,
-    CHECK (father_id <> bird_id AND mother_id <> bird_id)
+    status      varchar(32) NOT NULL DEFAULT 'на ферме'
+        CHECK (status IN ('на ферме', 'передана', 'пала')),
+    left_date   date,
+    CHECK (father_id <> bird_id AND mother_id <> bird_id),
+    CHECK ((status = 'на ферме') = (left_date IS NULL)),
+    CHECK (left_date IS NULL OR left_date >= birth_date)
 );
 
 CREATE TABLE breeding_pair

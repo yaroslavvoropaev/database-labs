@@ -1,17 +1,10 @@
-WITH left_farm AS (SELECT tc.bird_id, tc.end_date AS left_on
-                   FROM transfer_contract tc
-                   WHERE tc.end_date IS NOT NULL
-                     and tc.status = 'исполнен'),
-
-     herd AS (SELECT b.breed_id,
-                     COUNT(*)                                  AS birds_in_year,
-                     COUNT(*) FILTER ( WHERE left_farm.left_on IS NULL
-                         OR left_farm.left_on > '2025-12-31' ) AS birds_at_end
+WITH herd AS (SELECT b.breed_id,
+                     COUNT(*)                                                                     AS birds_in_year,
+                     COUNT(*) FILTER ( WHERE b.left_date IS NULL OR b.left_date > '2025-12-31') AS birds_at_end
               FROM bird b
-                       LEFT JOIN left_farm ON b.bird_id = left_farm.bird_id
               WHERE b.birth_date <= '2025-12-31'
-                AND (left_farm.left_on IS NULL
-                  OR left_farm.left_on >= '2025-01-01')
+                AND (b.left_date IS NULL
+                  OR b.left_date >= '2025-01-01')
               GROUP BY b.breed_id),
 
      pair_breed AS (SELECT br.*, b.breed_id
@@ -89,4 +82,7 @@ FROM breed br
          LEFT JOIN contracts t ON t.breed_id = br.breed_id
          LEFT JOIN exams e ON e.breed_id = br.breed_id
          LEFT JOIN close_pairs cp ON cp.breed_id = br.breed_id
-ORDER BY birds_at_end DESC, breed;
+ORDER BY birds_at_end DESC;
+
+
+
