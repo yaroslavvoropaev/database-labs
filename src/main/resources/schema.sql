@@ -169,9 +169,14 @@ CREATE TABLE vaccination
 
 CREATE TABLE flight_participation
 (
-    flight_id integer NOT NULL REFERENCES flight (flight_id) ON DELETE CASCADE ON UPDATE CASCADE,
-    bird_id   integer NOT NULL REFERENCES bird (bird_id) ON DELETE RESTRICT ON UPDATE CASCADE,
-    PRIMARY KEY (flight_id, bird_id)
+    flight_id integer     NOT NULL REFERENCES flight (flight_id) ON DELETE CASCADE ON UPDATE CASCADE,
+    bird_id   integer     NOT NULL REFERENCES bird (bird_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    status    varchar(32) NOT NULL DEFAULT 'заявлена'
+        CHECK (status IN ('заявлена', 'завершено', 'сошла с дистанции')),
+    place     integer CHECK (place > 0),
+    PRIMARY KEY (flight_id, bird_id),
+    UNIQUE (flight_id, place),
+    CHECK (place IS NULL OR status = 'завершено')
 );
 
 CREATE TABLE feed_batch
