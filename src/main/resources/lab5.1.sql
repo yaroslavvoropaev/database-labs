@@ -1,5 +1,6 @@
+-- сводка по породам
 WITH herd AS (SELECT b.breed_id,
-                     COUNT(*)                                                                     AS birds_in_year,
+                     COUNT(*)                                                                   AS birds_in_year,
                      COUNT(*) FILTER ( WHERE b.left_date IS NULL OR b.left_date > '2025-12-31') AS birds_at_end
               FROM bird b
               WHERE b.birth_date <= '2025-12-31'
@@ -7,6 +8,7 @@ WITH herd AS (SELECT b.breed_id,
                   OR b.left_date >= '2025-01-01')
               GROUP BY b.breed_id),
 
+     -- вспомагат
      pair_breed AS (SELECT br.*, b.breed_id
                     FROM breeding_pair br
                              JOIN bird b ON b.bird_id IN (br.male_id, br.female_id)),
@@ -56,12 +58,12 @@ WITH herd AS (SELECT b.breed_id,
                               JOIN bird m ON pair_breed.male_id = m.bird_id
                               JOIN bird f ON pair_breed.female_id = f.bird_id
                      WHERE pair_breed.start_date BETWEEN '2025-01-01' AND '2025-12-31'
-                       AND (m.bird_id IN (f.father_id, f.mother_id)
-                         OR f.bird_id IN (m.father_id, m.mother_id)
+                       AND (m.bird_id = f.father_id
+                         OR f.bird_id = m.mother_id
                          OR m.father_id = f.father_id
-                         OR m.mother_id = f.mother_id
-                         )
+                         OR m.mother_id = f.mother_id)
                      GROUP BY pair_breed.breed_id)
+
 
 SELECT br.name                         AS breed,
        COALESCE(h.birds_in_year, 0)    AS birds_in_year,

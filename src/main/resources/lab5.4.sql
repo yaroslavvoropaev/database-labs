@@ -47,6 +47,7 @@ WITH months AS (SELECT g.month_start::date                          AS month_sta
               FROM feed_writeoff fw
               WHERE fw.created_at >= '2025-01-01'
                 AND fw.created_at < '2026-01-01'
+                AND fw.status = 'проведено'
               GROUP BY month_start),
 
      contracts AS (SELECT date_trunc('month', tc.start_date)::date AS month_start,

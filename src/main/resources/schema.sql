@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS tablefunc; -- crosstab для отчёта-матрицы
+
 DROP TABLE IF EXISTS
     transfer_contract, feed_writeoff, feed_batch, flight_participation,
     vaccination, treatment, vet_examination, quarantine, movement,
@@ -203,7 +205,9 @@ CREATE TABLE feed_writeoff
     batch_id     integer        NOT NULL REFERENCES feed_batch (batch_id) ON DELETE RESTRICT ON UPDATE CASCADE,
     enclosure_id integer        NOT NULL REFERENCES enclosure (enclosure_id) ON DELETE RESTRICT ON UPDATE CASCADE,
     employee_id  integer        NOT NULL REFERENCES employee (employee_id) ON DELETE RESTRICT ON UPDATE CASCADE,
-    quantity     numeric(10, 2) NOT NULL CHECK (quantity > 0)
+    quantity     numeric(10, 2) NOT NULL CHECK (quantity > 0),
+    status       varchar(32)    NOT NULL DEFAULT 'проведено'
+        CHECK (status IN ('черновик', 'проведено', 'отменено'))
 );
 
 CREATE TABLE transfer_contract

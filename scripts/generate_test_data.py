@@ -3,6 +3,7 @@
 import random
 import string
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 
 import psycopg
 
@@ -21,8 +22,10 @@ BUYERS = 50
 FLIGHTS = 80
 H2_2025_FLIGHTS = 20      # дополнительные полёты во втором полугодии 2025 года
 OVERLAPS = 4              # полёты-«двойники» во 2-м полугодии 2025: 3 птицы записаны в оба полёта
-FEED_BATCHES = 40
-WRITEOFFS = 800
+FEED_KG_PER_BIRD_DAY = Decimal('0.045')
+FEED_BY_ENCLOSURE = {'общий': ['«Спорт»', 'ПК-6', '«Линька»'],   # какой корм дают в вольере по назначению
+                     'племенной': ['«Разведение»', 'молодняка'],
+                     'карантинный': ['«Восстановление»'], 'ветеринарный': ['«Восстановление»']}
 CONTRACTS = 80
 DEATHS = 15
 
@@ -80,7 +83,7 @@ with psycopg.connect(DSN) as conn:
     # Справочники из seed.sql
     breeds = [r[0] for r in select('SELECT breed_id FROM breed')]
     employees = [r[0] for r in select('SELECT employee_id FROM employee')]
-    feeds = [r[0] for r in select('SELECT feed_id FROM feed')]
+    feeds = select('SELECT feed_id, name FROM feed')
     vaccines = [r[0] for r in select("SELECT drug_id FROM drug WHERE name LIKE 'Вакцина%'")]
     medicines = [r[0] for r in select("SELECT drug_id FROM drug WHERE name NOT LIKE 'Вакцина%'")]
     enclosures = select('SELECT enclosure_id, number, status, capacity FROM enclosure')
@@ -228,6 +231,7 @@ with psycopg.connect(DSN) as conn:
             steps.append((start, enclosure))
             if end is not None:
                 steps.append((end, b['home']))
+        b['steps'] = steps
         current = None
         for d, to in steps:
             if to != current:
@@ -300,30 +304,58 @@ with psycopg.connect(DSN) as conn:
         flights.append(add_flight(len(flights) + 1, base['start'] + timedelta(minutes=random.randint(0, 60)),
                                   forced=random.sample(finished, min(3, len(finished))), status='проведён'))
 
-    # Корма: партии и списания (остаток партии не уходит в минус)
-    batches = []
-    for _ in range(FEED_BATCHES):
-        received, quantity = rand_date(date(2020, 1, 1), TODAY), random.choice([250, 500, 1000])
-        batches.append({'feed_id': random.choice(feeds), 'batch_number': next(codes), 'received_date': received,
-                        'quantity': quantity, 'expiry_date': received + days(365), 'remaining': quantity})
-    writeoffs = []
-    for _ in range(WRITEOFFS):
-        batch = random.choice(batches)
-        quantity = min(batch['remaining'], random.randint(5, 40))
-        if quantity > 0:
-            batch['remaining'] -= quantity
-            created = rand_date(batch['received_date'], min(batch['expiry_date'], TODAY))
-            writeoffs.append((batch, quantity, created))
+    # Корма: каждую неделю по каждому занятому вольеру списывается корм по числу птиц в нём.
+    # Корм зависит от назначения вольера. Новая партия закупается, когда старая кончилась или просрочена.
+    # Остаток партии уменьшают только проведённые списания, черновики и отменённые — нет.
+    status_of = {e: status for e, _, status, _ in enclosures}
+    diet = {status: [f for f, name in feeds if any(word in name for word in words)] or [f for f, _ in feeds]
+            for status, words in FEED_BY_ENCLOSURE.items()}
+    batches, writeoffs, open_batch = [], [], {}
+
+    def current_batch(feed_id, d):
+        batch = open_batch.get(feed_id)
+        if batch is None or batch['expiry_date'] < d:
+            received, quantity = d - days(random.randint(0, 3)), Decimal(random.choice([250, 500, 1000]))
+            batch = {'feed_id': feed_id, 'batch_number': next(codes), 'received_date': received, 'quantity': quantity,
+                     'expiry_date': received + days(random.randint(180, 365)), 'remaining': quantity}
+            batches.append(batch)
+            open_batch[feed_id] = batch
+        return batch
+
+    week = date(2019, 1, 14)
+    while week <= TODAY:
+        load = {}
+        for b in birds:
+            if b['arrival'] <= week <= b['bound']:
+                enclosure = [e for d, e in b['steps'] if d <= week][-1]
+                load[enclosure] = load.get(enclosure, 0) + 1
+        for enclosure, count in sorted(load.items()):
+            feed_id = random.choice(diet[status_of[enclosure]])
+            need = (count * FEED_KG_PER_BIRD_DAY * 7).quantize(Decimal('0.01'))
+            status = random.choices(['проведено', 'черновик', 'отменено'], weights=[92, 4, 4])[0]
+            if status != 'проведено':
+                writeoffs.append((current_batch(feed_id, week), need, week, enclosure, status))
+                continue
+            while need > 0:  # если партии не хватает — остаток списывается из новой
+                batch = current_batch(feed_id, week)
+                take = min(need, batch['remaining'])
+                batch['remaining'] -= take
+                need -= take
+                if batch['remaining'] == 0:
+                    del open_batch[feed_id]
+                writeoffs.append((batch, take, week, enclosure, status))
+        week += days(7)
+
     for batch in batches:
         if batch['remaining'] == 0:
             status = 'израсходована'
         else:
             status = 'списана' if batch['expiry_date'] < TODAY else 'в наличии'
         batch['id'] = insert('feed_batch', status=status, **batch)
-    for batch, quantity, created in writeoffs:
-        insert('feed_writeoff', number=next(codes), created_at=created, batch_id=batch['id'],
-               enclosure_id=random.choice(enclosures)[0], employee_id=random.choice(employees), quantity=quantity)
+    for batch, quantity, created, enclosure, status in writeoffs:
+        insert('feed_writeoff', number=next(codes), created_at=created, batch_id=batch['id'], enclosure_id=enclosure,
+               employee_id=random.choice(employees), quantity=quantity, status=status)
 
     for table in ['bird', 'breeding_pair', 'egg', 'movement', 'quarantine', 'vet_examination',
-                  'flight_participation', 'feed_writeoff', 'transfer_contract']:
+                  'flight_participation', 'feed_batch', 'feed_writeoff', 'transfer_contract']:
         print(f'{table:<22}{select(f"SELECT count(*) FROM {table}")[0][0]:>6}')
